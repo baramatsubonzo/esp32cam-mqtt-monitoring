@@ -1,0 +1,10 @@
+# Arduino build files
+*.bin
+*.elf
+*.hex
+
+# VSCode
+.vscode/
+
+# Secrets
+secrets.h

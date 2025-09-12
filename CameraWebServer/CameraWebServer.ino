@@ -1,20 +1,52 @@
 #include "esp_camera.h"
 #include <WiFi.h>
+// Add
+#include <WebServer.h>
 // We use AIThinker
 #define CAMERA_MODEL_AI_THINKER
 // ===========================
 // Select camera model in board_config.h
 // ===========================
 #include "board_config.h"
+#include "secrets.h"
 
-// TODO: Change your WiFi credentials (2.5GHz only)
-const char *ssid = "YOUR_ID";
-const char *password = "YOUR_PASSWORD";
-
-
-
-void startCameraServer();
 void setupLedFlash();
+
+WebServer server(80);
+
+// HTTP handler
+void handleRoot() {
+  String html = 
+    "<html><head><meta charset='utf-8'>"
+    "<meta http-equiv='refresh' content='5'>"
+    "<title>Latest Snapshot</title></head>"
+    "<body style='font-family:sans-serif'>"
+    "<h2>Latest Snapshot (auto-refresh every 5s)</h2>"
+    "<img src='/snapshot.jpg' style='max-width:100%;height:auto'/>"
+    "<p><a href='/snapshot.jpg'>Capture now</a></p>"
+    "</body></html>";
+  server.send(200, "text/html", html);
+}
+
+void handleSnapshot() {
+  for (int attempt = 0; attempt < 3; ++attempt) {
+    camera_fb_t *fb = esp_camera_fb_get();
+    if (!fb) {delay(100); continue; }
+
+    server.setContentLength(fb->len);
+    // server.sendHeader("Content-Type", "image/jpeg");
+    server.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    server.send(200, "image/jpeg", "");
+
+    WiFiClient client = server.client();
+    client.write(fb->buf, fb->len);
+
+    esp_camera_fb_return(fb);
+    return;
+  }
+  server.send(503, "text/plain", "Capture failed");
+}
+
 
 void setup() {
   Serial.begin(115200);
@@ -41,33 +73,15 @@ void setup() {
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
-  config.frame_size = FRAMESIZE_UXGA;
+
+  config.frame_size = FRAMESIZE_VGA;
   config.pixel_format = PIXFORMAT_JPEG;  // for streaming
   //config.pixel_format = PIXFORMAT_RGB565; // for face detection/recognition
   config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
   config.fb_location = CAMERA_FB_IN_PSRAM;
-  config.jpeg_quality = 12;
+  config.jpeg_quality = 22;
   config.fb_count = 1;
 
-  // if PSRAM IC present, init with UXGA resolution and higher JPEG quality
-  //                      for larger pre-allocated frame buffer.
-  if (config.pixel_format == PIXFORMAT_JPEG) {
-    if (psramFound()) {
-      config.jpeg_quality = 10;
-      config.fb_count = 2;
-      config.grab_mode = CAMERA_GRAB_LATEST;
-    } else {
-      // Limit the frame size when PSRAM is not available
-      config.frame_size = FRAMESIZE_SVGA;
-      config.fb_location = CAMERA_FB_IN_DRAM;
-    }
-  } else {
-    // Best option for face detection/recognition
-    config.frame_size = FRAMESIZE_240X240;
-#if CONFIG_IDF_TARGET_ESP32S3
-    config.fb_count = 2;
-#endif
-  }
 
 #if defined(CAMERA_MODEL_ESP_EYE)
   pinMode(13, INPUT_PULLUP);
@@ -88,10 +102,10 @@ void setup() {
     s->set_brightness(s, 1);   // up the brightness just a bit
     s->set_saturation(s, -2);  // lower the saturation
   }
-  // drop down frame size for higher initial frame rate
-  if (config.pixel_format == PIXFORMAT_JPEG) {
-    s->set_framesize(s, FRAMESIZE_QVGA);
-  }
+  // // drop down frame size for higher initial frame rate
+  // if (config.pixel_format == PIXFORMAT_JPEG) {
+  //   s->set_framesize(s, FRAMESIZE_QVGA);
+  // }
 
 #if defined(CAMERA_MODEL_M5STACK_WIDE) || defined(CAMERA_MODEL_M5STACK_ESP32CAM)
   s->set_vflip(s, 1);
@@ -107,7 +121,7 @@ void setup() {
   setupLedFlash();
 #endif
 
-  WiFi.begin(ssid, password);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
   WiFi.setSleep(false);
 
   Serial.print("WiFi connecting");
@@ -118,7 +132,11 @@ void setup() {
   Serial.println("");
   Serial.println("WiFi connected");
 
-  startCameraServer();
+  server.on("/", handleRoot);
+  server.on("/snapshot.jpg", handleSnapshot);
+  server.begin(); 
+
+  // startCameraServer();
 
   Serial.print("Camera Ready! Use 'http://");
   Serial.print(WiFi.localIP());
@@ -126,6 +144,7 @@ void setup() {
 }
 
 void loop() {
+  server.handleClient();
   // Do nothing. Everything is done in another task by the web server
-  delay(10000);
+  // delay(10000);
 }
