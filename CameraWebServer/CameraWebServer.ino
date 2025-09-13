@@ -2,6 +2,8 @@
 #include <WiFi.h>
 // Add
 #include <WebServer.h>
+// For MQTT
+#include <PubSubClient.h>
 // We use AIThinker
 #define CAMERA_MODEL_AI_THINKER
 // ===========================
@@ -13,6 +15,33 @@
 void setupLedFlash();
 
 WebServer server(80);
+
+// MQTT setup
+const char* MQTT_HOST = "broker.hivemq.com";
+const uint16_t MQTT_PORT = 1883;
+WiFiClient espClient;
+PubSubClient mqtt(espClient);
+
+// MQTT topic
+const char* MQTT_TOPIC_HELLO = "esp32cam/hello";
+
+// MQTT Reconnect helper
+bool mqttReconnect() {
+  if (mqtt.connected()) return true;
+  String clientId = "esp32-cam-" + String((uint32_t)esp_random(), 16);
+
+  for (int i = 0; i < 20 && !mqtt.connected(); ++i) {
+    if (mqtt.connect(clientId.c_str())) {
+      Serial.println("\nMQTT connected");
+      return true;
+    }
+    Serial.print(".");
+    delay(500);
+  }
+
+  Serial.println("\nMQTT connect failed");
+  return false;
+}
 
 // HTTP handler
 void handleRoot() {
@@ -76,7 +105,6 @@ void setup() {
 
   config.frame_size = FRAMESIZE_VGA;
   config.pixel_format = PIXFORMAT_JPEG;  // for streaming
-  //config.pixel_format = PIXFORMAT_RGB565; // for face detection/recognition
   config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
   config.fb_location = CAMERA_FB_IN_PSRAM;
   config.jpeg_quality = 22;
@@ -132,19 +160,35 @@ void setup() {
   Serial.println("");
   Serial.println("WiFi connected");
 
+  // Web Server
   server.on("/", handleRoot);
   server.on("/snapshot.jpg", handleSnapshot);
   server.begin(); 
 
-  // startCameraServer();
-
   Serial.print("Camera Ready! Use 'http://");
   Serial.print(WiFi.localIP());
   Serial.println("' to connect");
+
+  // MQTT connection and publish text
+  mqtt.setServer(MQTT_HOST, MQTT_PORT);
+  if (mqttReconnect()) {
+    String hello = "Hello from ESP32-CAM at " + WiFi.localIP().toString();
+    mqtt.publish(MQTT_TOPIC_HELLO, hello.c_str());
+  }
 }
+
+unsigned long lastHello = 0;
 
 void loop() {
   server.handleClient();
-  // Do nothing. Everything is done in another task by the web server
-  // delay(10000);
+
+  if (!mqtt.connected()) {
+    mqttReconnect();
+  }
+  mqtt.loop();
+
+  if (millis() - lastHello > 10000 && mqtt.connected()) {
+    mqtt.publish(MQTT_TOPIC_HELLO, "heartbeat");
+    lastHello = millis();
+  }
 }
