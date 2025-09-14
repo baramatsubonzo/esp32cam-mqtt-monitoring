@@ -2,7 +2,7 @@
 #include <WiFi.h>
 // Add
 #include <WebServer.h>
-// For MQTT
+// MQTT broker
 #include <PubSubClient.h>
 // We use AIThinker
 #define CAMERA_MODEL_AI_THINKER
@@ -24,10 +24,19 @@ PubSubClient mqtt(espClient);
 
 // MQTT topic
 const char* MQTT_TOPIC_HELLO = "esp32cam/hello";
+// MQTT for picture
+const char* TOPIC_BASE = "esp32cam/pic";
+const size_t CHUNK = 1024;
+String makeId();
+bool publishJpegFrame();
 
 // MQTT Reconnect helper
 bool mqttReconnect() {
   if (mqtt.connected()) return true;
+  Serial.print("MQTT connecting");
+
+  mqtt.setBufferSize(4096);
+
   String clientId = "esp32-cam-" + String((uint32_t)esp_random(), 16);
 
   for (int i = 0; i < 20 && !mqtt.connected(); ++i) {
@@ -41,6 +50,49 @@ bool mqttReconnect() {
 
   Serial.println("\nMQTT connect failed");
   return false;
+}
+
+String makeId() {
+  // Unique ID for each image
+  return String((uint32_t)millis(), 16) + "-" + String((uint32_t)esp_random(),16);
+}
+
+// Publish Image function
+bool publishJpegFrame() {
+  camera_fb_t *fb = esp_camera_fb_get();
+  if (!fb) return false;
+
+  String id = makeId();
+  size_t total = fb->len;
+  size_t chunks = (total + CHUNK - 1) / CHUNK;
+
+  // Notify the meta data(JSON)
+  String meta = String("{\"id\":\"") + id +
+                "\",\"len\":" + total +
+                ",\"chunks\":" + chunks +
+                ",\"ts\":" + millis() + "}";
+  mqtt.publish((String(TOPIC_BASE)+"/meta").c_str(), meta.c_str());
+
+  // Send the body chank
+  const uint8_t* p = fb->buf;
+  for (size_t i = 0; i < chunks; ++i) {
+    size_t off = i * CHUNK;
+    size_t n = min(CHUNK, total - off);
+    String topic = String(TOPIC_BASE) + "/data/" + id + "/" + i;
+
+    bool ok = mqtt.publish(topic.c_str(), p + off, n);
+    if (!ok) {
+      Serial.printf("publish chunk %u failed\n", (unsigned)i);
+    }
+    delay(2);
+  }
+
+  // Notify the terminal
+  mqtt.publish((String(TOPIC_BASE)+"/end").c_str(), id.c_str());
+
+  esp_camera_fb_return(fb);
+  Serial.printf("JPEG sent id=%s size=%u chunks=%u\n", id.c_str(), (unsigned)total, (unsigned)chunks);
+  return true;
 }
 
 // HTTP handler
@@ -187,8 +239,14 @@ void loop() {
   }
   mqtt.loop();
 
-  if (millis() - lastHello > 10000 && mqtt.connected()) {
+  if (millis() - lastHello > 15000 && mqtt.connected()) {
     mqtt.publish(MQTT_TOPIC_HELLO, "heartbeat");
     lastHello = millis();
+  }
+  
+  static unsigned long lastShot = 0;
+  if (millis() - lastShot > 10000 && mqtt.connected()) {
+    publishJpegFrame();
+    lastShot = millis();
   }
 }
