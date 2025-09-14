@@ -1,0 +1,7 @@
+# ignore all files under images/
+images/*
+
+# but keep the folder itself
+!images/.gitkeep
+
+.DS_Store
