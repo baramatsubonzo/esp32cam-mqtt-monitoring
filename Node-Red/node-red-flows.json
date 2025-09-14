@@ -1,0 +1,420 @@
+[
+    {
+        "id": "448ed96b40cd826d",
+        "type": "tab",
+        "label": "Flow 1",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "060e115789dd516c",
+        "type": "mqtt in",
+        "z": "448ed96b40cd826d",
+        "name": "",
+        "topic": "esp32cam/hello",
+        "qos": "0",
+        "datatype": "auto-detect",
+        "broker": "dd4ac4f74e3f0918",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 180,
+        "y": 140,
+        "wires": [
+            [
+                "0be55ba0aaf9b927"
+            ]
+        ]
+    },
+    {
+        "id": "0be55ba0aaf9b927",
+        "type": "debug",
+        "z": "448ed96b40cd826d",
+        "name": "debug 1",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 380,
+        "y": 140,
+        "wires": []
+    },
+    {
+        "id": "metaIn",
+        "type": "mqtt in",
+        "z": "448ed96b40cd826d",
+        "name": "pic meta",
+        "topic": "esp32cam/pic/meta",
+        "qos": "0",
+        "datatype": "auto",
+        "broker": "bkr1",
+        "inputs": 0,
+        "x": 260,
+        "y": 260,
+        "wires": [
+            [
+                "rebuild"
+            ]
+        ]
+    },
+    {
+        "id": "dataIn",
+        "type": "mqtt in",
+        "z": "448ed96b40cd826d",
+        "name": "pic data",
+        "topic": "esp32cam/pic/data/#",
+        "qos": "0",
+        "datatype": "buffer",
+        "broker": "bkr1",
+        "inputs": 0,
+        "x": 260,
+        "y": 320,
+        "wires": [
+            [
+                "rebuild"
+            ]
+        ]
+    },
+    {
+        "id": "endIn",
+        "type": "mqtt in",
+        "z": "448ed96b40cd826d",
+        "name": "pic end",
+        "topic": "esp32cam/pic/end",
+        "qos": "0",
+        "datatype": "auto",
+        "broker": "bkr1",
+        "inputs": 0,
+        "x": 260,
+        "y": 380,
+        "wires": [
+            [
+                "rebuild"
+            ]
+        ]
+    },
+    {
+        "id": "rebuild",
+        "type": "function",
+        "z": "448ed96b40cd826d",
+        "name": "rebuild JPEG",
+        "func": "// flow contextに一時保存\nlet table = flow.get('images') || {};\n\nif (msg.topic.endsWith('/meta')) {\n    const meta = JSON.parse(msg.payload);\n    table[meta.id] = { len: meta.len, chunks: meta.chunks, got: 0, parts: [] };\n    flow.set('images', table);\n    return null;\n}\n\nif (msg.topic.includes('/data/')) {\n    const seg = msg.topic.split('/');\n    const id  = seg[seg.length-2];\n    const idx = Number(seg[seg.length-1]);\n    const rec = table[id];\n    if (!rec) return null;\n\n    rec.parts[idx] = msg.payload; // Buffer\n    rec.got++;\n    if (rec.got === rec.chunks) {\n        const buf = Buffer.concat(rec.parts, rec.len);\n        delete table[id];\n        flow.set('images', table);\n\n        const dir  = \"/Users/shota/workplace/ifn712/esp32cam-mqtt-monitoring/images/\";\n        const name = `image_${Date.now()}.jpg`;\n\n        return [\n            { payload: buf, filename: dir + name}, \n            { payload: `saved ${id}` }];\n    }\n    return null;\n}\n\nreturn null;",
+        "outputs": 2,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 520,
+        "y": 320,
+        "wires": [
+            [
+                "saveFile",
+                "bc955ce00341ab41"
+            ],
+            [
+                "debugOut"
+            ]
+        ]
+    },
+    {
+        "id": "saveFile",
+        "type": "file",
+        "z": "448ed96b40cd826d",
+        "name": "save JPEG",
+        "filename": "filename",
+        "filenameType": "msg",
+        "appendNewline": false,
+        "createDir": false,
+        "overwriteFile": "true",
+        "x": 760,
+        "y": 300,
+        "wires": [
+            [
+                "048c4251b4c846b8"
+            ]
+        ]
+    },
+    {
+        "id": "debugOut",
+        "type": "debug",
+        "z": "448ed96b40cd826d",
+        "name": "done",
+        "active": true,
+        "tosidebar": true,
+        "complete": "true",
+        "x": 760,
+        "y": 360,
+        "wires": []
+    },
+    {
+        "id": "b754aad1b894ce84",
+        "type": "ui-text",
+        "z": "448ed96b40cd826d",
+        "group": "0cbf819c2aa58d46",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "name": "Display Image",
+        "label": "<h1>Latest Picture</h1>",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": 16,
+        "color": "#717171",
+        "wrapText": false,
+        "className": "",
+        "value": "payload",
+        "valueType": "msg",
+        "x": 540,
+        "y": 560,
+        "wires": []
+    },
+    {
+        "id": "bc955ce00341ab41",
+        "type": "function",
+        "z": "448ed96b40cd826d",
+        "name": "to base64",
+        "func": "if (Buffer.isBuffer(msg.payload)) {\n    msg.payload = msg.payload.toString('base64');\n}\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 520,
+        "y": 420,
+        "wires": [
+            [
+                "f931dce173b65f70",
+                "43a9ef3d31ebbec0"
+            ]
+        ]
+    },
+    {
+        "id": "f931dce173b65f70",
+        "type": "debug",
+        "z": "448ed96b40cd826d",
+        "name": "debug 2",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 760,
+        "y": 420,
+        "wires": []
+    },
+    {
+        "id": "43a9ef3d31ebbec0",
+        "type": "function",
+        "z": "448ed96b40cd826d",
+        "name": "convert Base64 String to payload",
+        "func": "// ここまでで msg.payload は Base64 文字列\nconst b64 = msg.payload;\nmsg.payload = `<div><img src=\"data:image/jpeg;base64,${b64}\" style=\"max-width:100%;height:auto\"/></div>`;\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 600,
+        "y": 480,
+        "wires": [
+            [
+                "b754aad1b894ce84"
+            ]
+        ]
+    },
+    {
+        "id": "048c4251b4c846b8",
+        "type": "function",
+        "z": "448ed96b40cd826d",
+        "name": "meta data",
+        "func": "const ts  = msg.ts || new Date().toLocaleString(\"en-AU\", {timeZone: \"Australia/Brisbane\"});\nconst did = msg.device_id || \"esp32cam-01\";\nflow.set('latest', { ts, did });   // Telegram用にも使える\nmsg.payload = `Device: ${did} / Updated: ${ts}`;\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 880,
+        "y": 480,
+        "wires": [
+            [
+                "732f2f434c1fc858"
+            ]
+        ]
+    },
+    {
+        "id": "732f2f434c1fc858",
+        "type": "ui-text",
+        "z": "448ed96b40cd826d",
+        "group": "0cbf819c2aa58d46",
+        "order": 0,
+        "width": 0,
+        "height": 0,
+        "name": "Status (meta data)",
+        "label": "Status",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": 16,
+        "color": "#717171",
+        "wrapText": false,
+        "className": "",
+        "value": "payload",
+        "valueType": "msg",
+        "x": 550,
+        "y": 620,
+        "wires": []
+    },
+    {
+        "id": "dd4ac4f74e3f0918",
+        "type": "mqtt-broker",
+        "name": "",
+        "broker": "broker.hivemq.com",
+        "port": 1883,
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": 4,
+        "keepalive": 60,
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthRetain": "false",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closeRetain": "false",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willRetain": "false",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    },
+    {
+        "id": "bkr1",
+        "type": "mqtt-broker",
+        "name": "HiveMQ public",
+        "broker": "broker.hivemq.com",
+        "port": "1883",
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true
+    },
+    {
+        "id": "0cbf819c2aa58d46",
+        "type": "ui-group",
+        "name": "Group 1",
+        "page": "1e9aeb998f53a667",
+        "width": 6,
+        "height": 1,
+        "order": 1,
+        "showTitle": true,
+        "className": "",
+        "visible": true,
+        "disabled": false,
+        "groupType": "default"
+    },
+    {
+        "id": "1e9aeb998f53a667",
+        "type": "ui-page",
+        "name": "Page 1",
+        "ui": "a2fd52a928a77036",
+        "path": "/page1",
+        "icon": "home",
+        "layout": "grid",
+        "theme": "9c639188d18930da",
+        "breakpoints": [
+            {
+                "name": "Default",
+                "px": 0,
+                "cols": 3
+            },
+            {
+                "name": "Tablet",
+                "px": 576,
+                "cols": 6
+            },
+            {
+                "name": "Small Desktop",
+                "px": 768,
+                "cols": 9
+            },
+            {
+                "name": "Desktop",
+                "px": 1024,
+                "cols": 12
+            }
+        ],
+        "order": 1,
+        "className": "",
+        "visible": "true",
+        "disabled": "false"
+    },
+    {
+        "id": "a2fd52a928a77036",
+        "type": "ui-base",
+        "name": "My Dashboard",
+        "path": "/dashboard",
+        "appIcon": "",
+        "includeClientData": true,
+        "acceptsClientConfig": [
+            "ui-notification",
+            "ui-control"
+        ],
+        "showPathInSidebar": false,
+        "headerContent": "page",
+        "navigationStyle": "default",
+        "titleBarStyle": "default",
+        "showReconnectNotification": true,
+        "notificationDisplayTime": 1,
+        "showDisconnectNotification": true,
+        "allowInstall": true
+    },
+    {
+        "id": "9c639188d18930da",
+        "type": "ui-theme",
+        "name": "Default Theme",
+        "colors": {
+            "surface": "#ffffff",
+            "primary": "#0094CE",
+            "bgPage": "#eeeeee",
+            "groupBg": "#ffffff",
+            "groupOutline": "#cccccc"
+        },
+        "sizes": {
+            "density": "default",
+            "pagePadding": "12px",
+            "groupGap": "12px",
+            "groupBorderRadius": "4px",
+            "widgetGap": "12px"
+        }
+    },
+    {
+        "id": "1a8d5fd28d8147af",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "@flowfuse/node-red-dashboard": "1.27.0"
+        }
+    }
+]
