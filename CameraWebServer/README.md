@@ -46,6 +46,7 @@ cd esp32cam-mqtt-monitoring
 ### 2\. Flash Firmware to the ESP32-CAM
 
 1.  Open the `CameraWebServer/` directory in the Arduino IDE.
+![Arduino](/docs/arduino1.png)
 
 2.  Inside the `CameraWebServer/` directory, create a new file named `secrets.h` and add your Wi-Fi credentials.<br>
 **⚠️ Warning: Never commit your `secrets.h` file to the repository.**
@@ -65,6 +66,7 @@ cd esp32cam-mqtt-monitoring
       * **Flash Mode**: `QIO`
       * **Partition Scheme**: `Huge APP (3MB No OTA/1MB SPIFFS)`
       * **PSRAM**: `Enabled`
+      ![Arduino](/docs/arduino2.png)
 
 4.  Connect the ESP32-CAM to your PC and click the **Upload (→)** button. As soon as the console displays `Connecting...`, **press the onboard RESET (RST) button once** to ensure a successful upload.
 
@@ -86,12 +88,14 @@ cd esp32cam-mqtt-monitoring
 3.  Open `http://localhost:1880` in your web browser.
 
 4.  From the top-right menu, select **Import** and import the [`Node-Red/node-red-flows.json`](https://github.com/baramatsubonzo/esp32cam-mqtt-monitoring/blob/master/Node-Red/node-red-flows.json)file from this repository.
+![Arduino](/docs/node-red.png)
 
 5.  Click the **Deploy** button.
 
 ### 4\. Check the Dashboard
 
 Open `http://localhost:1880/ui` (or `http://localhost:1880/dashboard/page1`) in your browser to see the latest image sent from your ESP32-CAM.
+![Arduino](/docs/dashboard.png)
 
 -----
 
